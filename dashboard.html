@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HotspotHub Dashboard</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;800&family=Zen+Dots&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #070b17;
+      --bg-card: rgba(12, 18, 38, 0.88);
+      --border-glow: rgba(112, 157, 255, 0.35);
+      --cyan: #8fefff;
+      --blue: #66b8ff;
+      --violet: #8d7dff;
+      --pink: #ee9dff;
+      --lavender: #e6d8ff;
+      --text-main: #eaf6ff;
+      --shadow: 0 0 18px rgba(89, 147, 255, 0.18), 0 0 40px rgba(186, 101, 255, 0.12);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Zen Dots', sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top, rgba(84, 114, 255, 0.18), transparent 25%),
+        radial-gradient(circle at bottom, rgba(196, 88, 255, 0.16), transparent 25%),
+        linear-gradient(180deg, #03050d 0%, #060a16 45%, #090f1d 100%);
+      color: var(--text-main);
+      padding: 24px;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: 'Orbitron', sans-serif;
+      font-size: clamp(1.5rem, 4vw, 2.8rem);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, var(--cyan), var(--blue), var(--violet), var(--pink));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    button {
+      padding: 12px 18px;
+      border: 1px solid rgba(144, 173, 255, 0.28);
+      border-radius: 12px;
+      cursor: pointer;
+      font-family: 'Zen Dots', sans-serif;
+      font-size: 0.82rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: white;
+      background: linear-gradient(135deg, #58dfff 0%, #4e8cff 42%, #8f65ff 72%, #d57cff 100%);
+      box-shadow: 0 0 14px rgba(108, 152, 255, 0.22);
+    }
+
+    .card {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-glow);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }
+
+    #map {
+      width: 100%;
+      height: 72vh;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(136, 167, 255, 0.22);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <h1>Admin Map</h1>
+      <button onclick="logout()">Logout</button>
+    </div>
+
+    <div class="card">
+      <div id="map"></div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-database.js";
+
+    if (sessionStorage.getItem("admin_ok") !== "true") {
+      window.location.href = "admin.html";
+    }
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAqRdluD5I2CYDSZFtlLbPhkjjzS8V4zIA",
+  authDomain: "location-3698d.firebaseapp.com",
+  databaseURL: "https://location-3698d-default-rtdb.firebaseio.com",
+  projectId: "location-3698d",
+  storageBucket: "location-3698d.firebasestorage.app",
+  messagingSenderId: "249053894413",
+  appId: "1:249053894413:web:22743ce0f952f170db8244",
+  measurementId: "G-M97J8EGLKW"
+};
+
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const map = L.map("map").setView([24.7136, 46.6753], 12);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+
+    const markers = {};
+
+    const locationsRef = ref(db, "locations");
+
+    onValue(locationsRef, (snapshot) => {
+      const data = snapshot.val() || {};
+
+      for (const key in markers) {
+        if (!data[key]) {
+          map.removeLayer(markers[key]);
+          delete markers[key];
+        }
+      }
+
+      const bounds = [];
+
+      for (const key in data) {
+        const user = data[key];
+        if (typeof user.lat !== "number" || typeof user.lon !== "number") continue;
+
+        const label = user.name && user.name.trim() ? user.name : key;
+        const popupText = `
+          <div style="font-family: Arial, sans-serif; min-width: 120px;">
+            <b>${label}</b><br>
+            Lat: ${user.lat}<br>
+            Lon: ${user.lon}
+          </div>
+        `;
+
+        if (!markers[key]) {
+          markers[key] = L.marker([user.lat, user.lon]).addTo(map);
+        } else {
+          markers[key].setLatLng([user.lat, user.lon]);
+        }
+
+        markers[key].bindPopup(popupText);
+        bounds.push([user.lat, user.lon]);
+      }
+
+      if (bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [40, 40] });
+      }
+    });
+
+    window.logout = function logout() {
+      sessionStorage.removeItem("admin_ok");
+      window.location.href = "admin.html";
+    };
+  </script>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</body>
+</html>
