@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HotspotHub</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;800&family=Krona+One&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-dark: #070b17;
+      --bg-card: rgba(12, 18, 38, 0.88);
+      --border-glow: rgba(112, 157, 255, 0.35);
+      --cyan: #8fefff;
+      --bright-cyan: #63e9ff;
+      --blue: #66b8ff;
+      --periwinkle: #9bbcff;
+      --violet: #8d7dff;
+      --pink: #ee9dff;
+      --lavender: #e6d8ff;
+      --text-main: #eaf6ff;
+      --text-soft: #bfd8ff;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Krona One', sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top, rgba(84, 114, 255, 0.18), transparent 25%),
+        radial-gradient(circle at bottom, rgba(196, 88, 255, 0.16), transparent 25%),
+        linear-gradient(180deg, #03050d 0%, #060a16 45%, #090f1d 100%);
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 860px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .card {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-glow);
+      border-radius: 18px;
+      padding: 70px 24px 24px 24px; /* FIXED spacing */
+      backdrop-filter: blur(10px);
+      text-align: center;
+      position: relative;
+    }
+
+    .menu-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      font-size: 22px;
+      background: linear-gradient(135deg, #58dfff, #8f65ff);
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    h1 {
+      margin: 10px 0 18px 0;
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-family: 'Orbitron', sans-serif;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      background: linear-gradient(90deg, #63e9ff, #66b8ff, #8d7dff, #ee9dff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 0.9rem;
+      color: var(--text-soft);
+      letter-spacing: 0.08em;
+    }
+
+    input {
+      width: 100%;
+      max-width: 320px;
+      margin: 0 auto 14px auto;
+      display: block;
+      padding: 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(126, 174, 255, 0.35);
+      background: rgba(8, 13, 28, 0.9);
+      color: white;
+      text-align: center;
+    }
+
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    button {
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      font-family: 'Krona One', sans-serif;
+      color: white;
+      background: linear-gradient(135deg, #58dfff, #4e8cff, #8f65ff, #d57cff);
+      cursor: pointer;
+    }
+
+    #status {
+      margin-top: 18px;
+      padding: 16px;
+      border-radius: 14px;
+      background: rgba(5, 9, 20, 0.94);
+      color: var(--lavender);
+      min-height: 80px;
+    }
+
+    .map-title {
+      font-family: 'Orbitron', sans-serif;
+      color: var(--pink);
+      margin-bottom: 10px;
+    }
+
+    #map {
+      width: 100%;
+      height: 450px;
+      border-radius: 16px;
+    }
+
+    @media (max-width: 640px) {
+      .card {
+        padding: 80px 18px 18px 18px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+
+    <div class="card">
+      <button class="menu-btn" onclick="openAdmin()">⋮</button>
+
+      <h1>HotspotHub</h1>
+
+      <label>Enter your name</label>
+      <input id="nickname" placeholder="Example: Noura" />
+
+      <div class="button-group">
+        <button onclick="saveNickname()">Save Name</button>
+        <button onclick="startTracking()">Start Live Tracking</button>
+        <button onclick="stopTracking()">Stop Tracking</button>
+      </div>
+
+      <div id="status">Ready...</div>
+    </div>
+
+    <div class="card">
+      <h3 class="map-title">Live Map</h3>
+      <div id="map"></div>
+    </div>
+
+  </div>
+
+  <script>
+    function openAdmin() {
+      window.location.href = "admin.html";
+    }
+  </script>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
+    import { getDatabase, ref, set, remove } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-database.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAqRdluD5I2CYDSZFtlLbPhkjjzS8V4zIA",
+  authDomain: "location-3698d.firebaseapp.com",
+  databaseURL: "https://location-3698d-default-rtdb.firebaseio.com",
+  projectId: "location-3698d",
+  storageBucket: "location-3698d.firebasestorage.app",
+  messagingSenderId: "249053894413",
+  appId: "1:249053894413:web:22743ce0f952f170db8244",
+  measurementId: "G-M97J8EGLKW"
+};
+
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    let watchId = null;
+    let map, marker;
+
+    function getDeviceId() {
+      let id = localStorage.getItem("device_id");
+      if (!id) {
+        id = "phone_" + Math.random().toString(36).slice(2);
+        localStorage.setItem("device_id", id);
+      }
+      return id;
+    }
+
+    function getName() {
+      return localStorage.getItem("name") || "";
+    }
+
+    window.saveNickname = () => {
+      localStorage.setItem("name", document.getElementById("nickname").value);
+    };
+
+    function initMap() {
+      map = L.map("map").setView([24.7, 46.6], 13);
+
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png").addTo(map);
+    }
+
+    async function writeLocation(lat, lon) {
+      const id = getDeviceId();
+      const name = getName();
+
+      await set(ref(db, "locations/" + id), { lat, lon, name });
+
+      if (!marker) {
+        marker = L.marker([lat, lon]).addTo(map);
+      } else {
+        marker.setLatLng([lat, lon]);
+      }
+    }
+
+    window.startTracking = () => {
+      if (watchId) return;
+
+      watchId = navigator.geolocation.watchPosition(async (pos) => {
+        await writeLocation(pos.coords.latitude, pos.coords.longitude);
+      });
+    };
+
+    window.stopTracking = async () => {
+      const id = getDeviceId();
+
+      if (watchId) {
+        navigator.geolocation.clearWatch(watchId);
+        watchId = null;
+      }
+
+      await remove(ref(db, "locations/" + id));
+
+      if (marker) {
+        map.removeLayer(marker);
+        marker = null;
+      }
+
+      document.getElementById("status").textContent =
+        "Tracking stopped.\nUser removed completely.";
+    };
+
+    initMap();
+  </script>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+</body>
+</html>
