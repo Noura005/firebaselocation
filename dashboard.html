@@ -23,8 +23,6 @@
       --text-main: #eaf6ff;
       --text-soft: #bfd8ff;
       --shadow: 0 0 18px rgba(89, 147, 255, 0.18), 0 0 40px rgba(186, 101, 255, 0.12);
-      --danger1: #ff6b9d;
-      --danger2: #ff4d6d;
     }
 
     * { box-sizing: border-box; }
@@ -81,17 +79,6 @@
       box-shadow: 0 0 14px rgba(108, 152, 255, 0.22);
     }
 
-    button.danger {
-      background: linear-gradient(135deg, var(--danger1), var(--danger2));
-      border-color: rgba(255, 107, 157, 0.35);
-    }
-
-    .topbar-actions {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
     .card {
       width: 100%;
       background: var(--bg-card);
@@ -131,68 +118,20 @@
       box-shadow: inset 0 0 12px rgba(84, 143, 255, 0.08);
       line-height: 1.9;
       font-size: 0.88rem;
-      margin-bottom: 16px;
     }
 
-    .results-box::-webkit-scrollbar,
-    .users-list::-webkit-scrollbar {
+    .results-box::-webkit-scrollbar {
       width: 10px;
     }
 
-    .results-box::-webkit-scrollbar-track,
-    .users-list::-webkit-scrollbar-track {
+    .results-box::-webkit-scrollbar-track {
       background: rgba(255,255,255,0.04);
       border-radius: 10px;
     }
 
-    .results-box::-webkit-scrollbar-thumb,
-    .users-list::-webkit-scrollbar-thumb {
+    .results-box::-webkit-scrollbar-thumb {
       background: linear-gradient(180deg, #66b8ff, #8d7dff, #ee9dff);
       border-radius: 10px;
-    }
-
-    .users-list {
-      max-height: 260px;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-    }
-
-    .user-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      padding: 12px;
-      border-radius: 12px;
-      background: rgba(5, 9, 20, 0.94);
-      border: 1px solid rgba(131, 150, 255, 0.18);
-    }
-
-    .user-info {
-      min-width: 0;
-      flex: 1;
-      color: var(--text-main);
-      font-size: 0.82rem;
-      line-height: 1.6;
-    }
-
-    .user-name {
-      color: var(--lavender);
-      margin-bottom: 4px;
-    }
-
-    .user-meta {
-      color: var(--text-soft);
-      font-size: 0.72rem;
-      word-break: break-word;
-    }
-
-    .delete-btn {
-      padding: 10px 12px;
-      font-size: 0.72rem;
-      white-space: nowrap;
     }
 
     @media (max-width: 640px) {
@@ -203,10 +142,6 @@
       .topbar {
         flex-direction: column;
         align-items: stretch;
-      }
-
-      .topbar-actions {
-        flex-direction: column;
       }
 
       button {
@@ -220,15 +155,6 @@
       .results-box {
         max-height: 240px;
       }
-
-      .user-row {
-        flex-direction: column;
-        align-items: stretch;
-      }
-
-      .delete-btn {
-        width: 100%;
-      }
     }
   </style>
 </head>
@@ -236,10 +162,7 @@
   <div class="container">
     <div class="topbar">
       <h1>Admin Map</h1>
-      <div class="topbar-actions">
-        <button class="danger" onclick="clearAllUsers()">Clear All Users</button>
-        <button onclick="logout()">Logout</button>
-      </div>
+      <button onclick="logout()">Logout</button>
     </div>
 
     <div class="card">
@@ -250,22 +173,13 @@
       <h3 class="section-title">Optimal Drone Position</h3>
       <div id="resultsBox" class="results-box">Waiting for user data...</div>
     </div>
-
-    <div class="card">
-      <h3 class="section-title">Manage Users</h3>
-      <div id="usersList" class="users-list">
-        <div class="user-row">
-          <div class="user-info">No users available.</div>
-        </div>
-      </div>
-    </div>
   </div>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
-    import { getDatabase, ref, onValue, remove, set } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-database.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-database.js";
 
     if (sessionStorage.getItem("admin_ok") !== "true") {
       window.location.href = "admin.html";
@@ -295,12 +209,7 @@
     const markers = {};
     const circles = {};
     const resultsBox = document.getElementById("resultsBox");
-    const usersList = document.getElementById("usersList");
     const locationsRef = ref(db, "locations");
-    const deletedUsersRef = ref(db, "deletedUsers");
-
-    let deletedUsers = {};
-    const DELETE_HOLD_MS = 60000;
 
     function toRadians(deg) {
       return deg * (Math.PI / 180);
@@ -320,20 +229,6 @@
 
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       return R * c;
-    }
-
-    async function cleanupDeletedList() {
-      const now = Date.now();
-      for (const userId in deletedUsers) {
-        if (!deletedUsers[userId]?.until) continue;
-        if (now > deletedUsers[userId].until) {
-          try {
-            await remove(ref(db, `deletedUsers/${userId}`));
-          } catch (error) {
-            console.error("Failed to remove expired deleted user entry:", error);
-          }
-        }
-      }
     }
 
     function updateOptimalBox(users) {
@@ -396,78 +291,8 @@
       resultsBox.textContent = output;
     }
 
-    function renderUsersList(users) {
-      if (!users.length) {
-        usersList.innerHTML = `
-          <div class="user-row">
-            <div class="user-info">No users available.</div>
-          </div>
-        `;
-        return;
-      }
-
-      usersList.innerHTML = users.map(user => `
-        <div class="user-row">
-          <div class="user-info">
-            <div class="user-name">${user.name}</div>
-            <div class="user-meta">
-              ID: ${user.id}<br>
-              Lat: ${user.lat.toFixed(6)} | Lon: ${user.lon.toFixed(6)}
-            </div>
-          </div>
-          <button class="danger delete-btn" onclick="deleteUser('${user.id}')">Delete</button>
-        </div>
-      `).join("");
-    }
-
-    window.deleteUser = async function deleteUser(userId) {
-      const confirmed = confirm("Delete this user from the map for 1 minute?");
-      if (!confirmed) return;
-
-      try {
-        await set(ref(db, `deletedUsers/${userId}`), {
-          until: Date.now() + DELETE_HOLD_MS
-        });
-
-        await remove(ref(db, `locations/${userId}`));
-      } catch (error) {
-        console.error(error);
-        alert("Failed to delete user.");
-      }
-    };
-
-    window.clearAllUsers = async function clearAllUsers() {
-      const confirmed = confirm("Clear all users from the map for 1 minute?");
-      if (!confirmed) return;
-
-      try {
-        const snapshotCleanup = [];
-        const currentLocations = Object.keys(markers);
-
-        for (const userId of currentLocations) {
-          snapshotCleanup.push(
-            set(ref(db, `deletedUsers/${userId}`), {
-              until: Date.now() + DELETE_HOLD_MS
-            })
-          );
-        }
-
-        await Promise.all(snapshotCleanup);
-        await remove(ref(db, "locations"));
-      } catch (error) {
-        console.error(error);
-        alert("Failed to clear all users.");
-      }
-    };
-
-    onValue(deletedUsersRef, async (snapshot) => {
-      deletedUsers = snapshot.val() || {};
-      await cleanupDeletedList();
-    });
-
-    onValue(locationsRef, async (snapshot) => {
+    onValue(locationsRef, (snapshot) => {
       const data = snapshot.val() || {};
-      const now = Date.now();
 
       for (const key in markers) {
         if (!data[key]) {
@@ -488,17 +313,6 @@
 
       for (const key in data) {
         const user = data[key];
-
-        // if user is in deleted list and delete window still active, keep removing them
-        if (deletedUsers[key]?.until && now < deletedUsers[key].until) {
-          try {
-            await remove(ref(db, `locations/${key}`));
-          } catch (error) {
-            console.error("Failed to re-remove deleted user:", error);
-          }
-          continue;
-        }
-
         if (typeof user.lat !== "number" || typeof user.lon !== "number") continue;
 
         const label = user.name && user.name.trim() ? user.name : "Unknown";
@@ -542,38 +356,17 @@
         bounds.push([user.lat, user.lon]);
       }
 
-      // remove leftover layers for users excluded above
-      for (const key in markers) {
-        const stillVisible = users.some(user => user.id === key);
-        if (!stillVisible) {
-          map.removeLayer(markers[key]);
-          delete markers[key];
-        }
-      }
-
-      for (const key in circles) {
-        const stillVisible = users.some(user => user.id === key);
-        if (!stillVisible) {
-          map.removeLayer(circles[key]);
-          delete circles[key];
-        }
-      }
-
       if (bounds.length > 0) {
         map.fitBounds(bounds, { padding: [40, 40] });
       }
 
       updateOptimalBox(users);
-      renderUsersList(users);
     });
 
     window.logout = function logout() {
       sessionStorage.removeItem("admin_ok");
       window.location.href = "admin.html";
     };
-
-    // periodic cleanup of expired delete holds
-    setInterval(cleanupDeletedList, 10000);
   </script>
 </body>
 </html>
