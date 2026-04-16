@@ -261,12 +261,11 @@
     </div>
   </div>
 
-  <!-- Load Leaflet FIRST -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
-    import { getDatabase, ref, onValue, remove } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-database.js";
+    import { getDatabase, ref, onValue, remove, set } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-database.js";
 
     if (sessionStorage.getItem("admin_ok") !== "true") {
       window.location.href = "admin.html";
@@ -298,6 +297,10 @@
     const resultsBox = document.getElementById("resultsBox");
     const usersList = document.getElementById("usersList");
     const locationsRef = ref(db, "locations");
+    const deletedUsersRef = ref(db, "deletedUsers");
+
+    let deletedUsers = {};
+    const DELETE_HOLD_MS = 60000;
 
     function toRadians(deg) {
       return deg * (Math.PI / 180);
@@ -317,6 +320,20 @@
 
       const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
       return R * c;
+    }
+
+    async function cleanupDeletedList() {
+      const now = Date.now();
+      for (const userId in deletedUsers) {
+        if (!deletedUsers[userId]?.until) continue;
+        if (now > deletedUsers[userId].until) {
+          try {
+            await remove(ref(db, `deletedUsers/${userId}`));
+          } catch (error) {
+            console.error("Failed to remove expired deleted user entry:", error);
+          }
+        }
+      }
     }
 
     function updateOptimalBox(users) {
@@ -363,7 +380,7 @@
       output += `Latitude: ${bestUser.lat.toFixed(6)}\n`;
       output += `Longitude: ${bestUser.lon.toFixed(6)}\n`;
       output += `Nearby users within 500m: ${bestScore}\n\n`;
-      output += "--- Distances to others ---\n";
+      output += "DISTANCES TO OTHERS\n";
 
       for (let i = 0; i < users.length; i++) {
         if (i === bestIndex) continue;
@@ -404,10 +421,14 @@
     }
 
     window.deleteUser = async function deleteUser(userId) {
-      const confirmed = confirm("Delete this user from the map?");
+      const confirmed = confirm("Delete this user from the map for 1 minute?");
       if (!confirmed) return;
 
       try {
+        await set(ref(db, `deletedUsers/${userId}`), {
+          until: Date.now() + DELETE_HOLD_MS
+        });
+
         await remove(ref(db, `locations/${userId}`));
       } catch (error) {
         console.error(error);
@@ -416,10 +437,22 @@
     };
 
     window.clearAllUsers = async function clearAllUsers() {
-      const confirmed = confirm("Clear all users from the map?");
+      const confirmed = confirm("Clear all users from the map for 1 minute?");
       if (!confirmed) return;
 
       try {
+        const snapshotCleanup = [];
+        const currentLocations = Object.keys(markers);
+
+        for (const userId of currentLocations) {
+          snapshotCleanup.push(
+            set(ref(db, `deletedUsers/${userId}`), {
+              until: Date.now() + DELETE_HOLD_MS
+            })
+          );
+        }
+
+        await Promise.all(snapshotCleanup);
         await remove(ref(db, "locations"));
       } catch (error) {
         console.error(error);
@@ -427,8 +460,14 @@
       }
     };
 
-    onValue(locationsRef, (snapshot) => {
+    onValue(deletedUsersRef, async (snapshot) => {
+      deletedUsers = snapshot.val() || {};
+      await cleanupDeletedList();
+    });
+
+    onValue(locationsRef, async (snapshot) => {
       const data = snapshot.val() || {};
+      const now = Date.now();
 
       for (const key in markers) {
         if (!data[key]) {
@@ -449,6 +488,17 @@
 
       for (const key in data) {
         const user = data[key];
+
+        // if user is in deleted list and delete window still active, keep removing them
+        if (deletedUsers[key]?.until && now < deletedUsers[key].until) {
+          try {
+            await remove(ref(db, `locations/${key}`));
+          } catch (error) {
+            console.error("Failed to re-remove deleted user:", error);
+          }
+          continue;
+        }
+
         if (typeof user.lat !== "number" || typeof user.lon !== "number") continue;
 
         const label = user.name && user.name.trim() ? user.name : "Unknown";
@@ -492,6 +542,23 @@
         bounds.push([user.lat, user.lon]);
       }
 
+      // remove leftover layers for users excluded above
+      for (const key in markers) {
+        const stillVisible = users.some(user => user.id === key);
+        if (!stillVisible) {
+          map.removeLayer(markers[key]);
+          delete markers[key];
+        }
+      }
+
+      for (const key in circles) {
+        const stillVisible = users.some(user => user.id === key);
+        if (!stillVisible) {
+          map.removeLayer(circles[key]);
+          delete circles[key];
+        }
+      }
+
       if (bounds.length > 0) {
         map.fitBounds(bounds, { padding: [40, 40] });
       }
@@ -504,6 +571,9 @@
       sessionStorage.removeItem("admin_ok");
       window.location.href = "admin.html";
     };
+
+    // periodic cleanup of expired delete holds
+    setInterval(cleanupDeletedList, 10000);
   </script>
 </body>
 </html>
