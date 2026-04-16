@@ -21,7 +21,10 @@
       --pink: #ee9dff;
       --lavender: #e6d8ff;
       --text-main: #eaf6ff;
+      --text-soft: #bfd8ff;
       --shadow: 0 0 18px rgba(89, 147, 255, 0.18), 0 0 40px rgba(186, 101, 255, 0.12);
+      --danger1: #ff6b9d;
+      --danger2: #ff4d6d;
     }
 
     * { box-sizing: border-box; }
@@ -78,6 +81,17 @@
       box-shadow: 0 0 14px rgba(108, 152, 255, 0.22);
     }
 
+    button.danger {
+      background: linear-gradient(135deg, var(--danger1), var(--danger2));
+      border-color: rgba(255, 107, 157, 0.35);
+    }
+
+    .topbar-actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
     .card {
       width: 100%;
       background: var(--bg-card);
@@ -85,6 +99,7 @@
       border-radius: 18px;
       padding: 18px;
       box-shadow: var(--shadow);
+      margin-bottom: 18px;
     }
 
     #map {
@@ -93,6 +108,91 @@
       border-radius: 16px;
       overflow: hidden;
       border: 1px solid rgba(136, 167, 255, 0.22);
+    }
+
+    .section-title {
+      margin: 0 0 14px 0;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 1.1rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--pink);
+    }
+
+    .results-box {
+      max-height: 280px;
+      overflow-y: auto;
+      white-space: pre-line;
+      background: rgba(5, 9, 20, 0.94);
+      color: var(--lavender);
+      padding: 16px;
+      border-radius: 14px;
+      border: 1px solid rgba(131, 150, 255, 0.18);
+      box-shadow: inset 0 0 12px rgba(84, 143, 255, 0.08);
+      line-height: 1.9;
+      font-size: 0.88rem;
+      margin-bottom: 16px;
+    }
+
+    .results-box::-webkit-scrollbar,
+    .users-list::-webkit-scrollbar {
+      width: 10px;
+    }
+
+    .results-box::-webkit-scrollbar-track,
+    .users-list::-webkit-scrollbar-track {
+      background: rgba(255,255,255,0.04);
+      border-radius: 10px;
+    }
+
+    .results-box::-webkit-scrollbar-thumb,
+    .users-list::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, #66b8ff, #8d7dff, #ee9dff);
+      border-radius: 10px;
+    }
+
+    .users-list {
+      max-height: 260px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .user-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 12px;
+      background: rgba(5, 9, 20, 0.94);
+      border: 1px solid rgba(131, 150, 255, 0.18);
+    }
+
+    .user-info {
+      min-width: 0;
+      flex: 1;
+      color: var(--text-main);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+
+    .user-name {
+      color: var(--lavender);
+      margin-bottom: 4px;
+    }
+
+    .user-meta {
+      color: var(--text-soft);
+      font-size: 0.72rem;
+      word-break: break-word;
+    }
+
+    .delete-btn {
+      padding: 10px 12px;
+      font-size: 0.72rem;
+      white-space: nowrap;
     }
 
     @media (max-width: 640px) {
@@ -105,12 +205,29 @@
         align-items: stretch;
       }
 
+      .topbar-actions {
+        flex-direction: column;
+      }
+
       button {
         width: 100%;
       }
 
       #map {
-        height: 68vh;
+        height: 60vh;
+      }
+
+      .results-box {
+        max-height: 240px;
+      }
+
+      .user-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .delete-btn {
+        width: 100%;
       }
     }
   </style>
@@ -119,11 +236,28 @@
   <div class="container">
     <div class="topbar">
       <h1>Admin Map</h1>
-      <button onclick="logout()">Logout</button>
+      <div class="topbar-actions">
+        <button class="danger" onclick="clearAllUsers()">Clear All Users</button>
+        <button onclick="logout()">Logout</button>
+      </div>
     </div>
 
     <div class="card">
       <div id="map"></div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">Optimal Drone Position</h3>
+      <div id="resultsBox" class="results-box">Waiting for user data...</div>
+    </div>
+
+    <div class="card">
+      <h3 class="section-title">Manage Users</h3>
+      <div id="usersList" class="users-list">
+        <div class="user-row">
+          <div class="user-info">No users available.</div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -132,7 +266,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-app.js";
-    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-database.js";
+    import { getDatabase, ref, onValue, remove } from "https://www.gstatic.com/firebasejs/12.11.0/firebase-database.js";
 
     if (sessionStorage.getItem("admin_ok") !== "true") {
       window.location.href = "admin.html";
@@ -161,12 +295,141 @@
 
     const markers = {};
     const circles = {};
+    const resultsBox = document.getElementById("resultsBox");
+    const usersList = document.getElementById("usersList");
     const locationsRef = ref(db, "locations");
+
+    function toRadians(deg) {
+      return deg * (Math.PI / 180);
+    }
+
+    function calculateDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const dLat = toRadians(lat2 - lat1);
+      const dLon = toRadians(lon2 - lon1);
+
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRadians(lat1)) *
+        Math.cos(toRadians(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function updateOptimalBox(users) {
+      if (!users.length) {
+        resultsBox.textContent = "No users found.";
+        return;
+      }
+
+      let bestIndex = -1;
+      let bestScore = -1;
+
+      for (let i = 0; i < users.length; i++) {
+        let closeCount = 0;
+
+        for (let j = 0; j < users.length; j++) {
+          if (i === j) continue;
+
+          const dist = calculateDistance(
+            users[i].lat, users[i].lon,
+            users[j].lat, users[j].lon
+          );
+
+          if (dist < 500) {
+            closeCount++;
+          }
+        }
+
+        if (closeCount > bestScore) {
+          bestScore = closeCount;
+          bestIndex = i;
+        }
+      }
+
+      if (bestIndex === -1) {
+        resultsBox.textContent = "No optimal user found.";
+        return;
+      }
+
+      const bestUser = users[bestIndex];
+
+      let output = "";
+      output += "OPTIMAL DRONE POSITION\n";
+      output += `Name: ${bestUser.name}\n`;
+      output += `Latitude: ${bestUser.lat.toFixed(6)}\n`;
+      output += `Longitude: ${bestUser.lon.toFixed(6)}\n`;
+      output += `Nearby users within 500m: ${bestScore}\n\n`;
+      output += "--- Distances to others ---\n";
+
+      for (let i = 0; i < users.length; i++) {
+        if (i === bestIndex) continue;
+
+        const dist = calculateDistance(
+          bestUser.lat, bestUser.lon,
+          users[i].lat, users[i].lon
+        );
+
+        output += `To ${users[i].name} : ${dist.toFixed(2)} meters\n`;
+      }
+
+      resultsBox.textContent = output;
+    }
+
+    function renderUsersList(users) {
+      if (!users.length) {
+        usersList.innerHTML = `
+          <div class="user-row">
+            <div class="user-info">No users available.</div>
+          </div>
+        `;
+        return;
+      }
+
+      usersList.innerHTML = users.map(user => `
+        <div class="user-row">
+          <div class="user-info">
+            <div class="user-name">${user.name}</div>
+            <div class="user-meta">
+              ID: ${user.id}<br>
+              Lat: ${user.lat.toFixed(6)} | Lon: ${user.lon.toFixed(6)}
+            </div>
+          </div>
+          <button class="danger delete-btn" onclick="deleteUser('${user.id}')">Delete</button>
+        </div>
+      `).join("");
+    }
+
+    window.deleteUser = async function deleteUser(userId) {
+      const confirmed = confirm("Delete this user from the map?");
+      if (!confirmed) return;
+
+      try {
+        await remove(ref(db, `locations/${userId}`));
+      } catch (error) {
+        console.error(error);
+        alert("Failed to delete user.");
+      }
+    };
+
+    window.clearAllUsers = async function clearAllUsers() {
+      const confirmed = confirm("Clear all users from the map?");
+      if (!confirmed) return;
+
+      try {
+        await remove(ref(db, "locations"));
+      } catch (error) {
+        console.error(error);
+        alert("Failed to clear all users.");
+      }
+    };
 
     onValue(locationsRef, (snapshot) => {
       const data = snapshot.val() || {};
 
-      // remove users that disappeared
       for (const key in markers) {
         if (!data[key]) {
           map.removeLayer(markers[key]);
@@ -182,13 +445,21 @@
       }
 
       const bounds = [];
+      const users = [];
 
       for (const key in data) {
         const user = data[key];
         if (typeof user.lat !== "number" || typeof user.lon !== "number") continue;
 
-        const label = user.name && user.name.trim() ? user.name : key;
+        const label = user.name && user.name.trim() ? user.name : "Unknown";
         const accuracy = typeof user.accuracy === "number" ? user.accuracy : 0;
+
+        users.push({
+          id: key,
+          name: label,
+          lat: user.lat,
+          lon: user.lon
+        });
 
         const popupText = `
           <div style="font-family: 'Russo One', sans-serif; min-width: 140px;">
@@ -224,6 +495,9 @@
       if (bounds.length > 0) {
         map.fitBounds(bounds, { padding: [40, 40] });
       }
+
+      updateOptimalBox(users);
+      renderUsersList(users);
     });
 
     window.logout = function logout() {
